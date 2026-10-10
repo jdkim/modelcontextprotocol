@@ -17,7 +17,7 @@ This SEP proposes a follow-on extension to [SEP-2127 (MCP Server Cards)](https:/
 
 SEP-2127's §"Why Exclude Primitives?" deliberately defers primitive advertisement to a follow-on SEP. The reason given: MCP servers are "inherently dynamic" and a static document cannot reliably represent primitives that vary by user, session, or configuration. The same rationale names the next step directly: _"A follow-on SEP should address the prerequisites, such as variant enumeration and clear consumer contracts, before primitive advertisement is added."_ This SEP is that follow-on.
 
-The dynamism argument is a real constraint, but it does not apply to every server. For a large class of MCP servers — public biocuration APIs, documentation servers, static tool catalogs, most anonymous read-only services — the primitive set does not vary per caller. Every consumer sees the same tools, prompts, and resources. For that class of server, primitive advertisement is not only safe; it is what registries and orchestrators need in order to work.
+The dynamism argument is a real constraint, but it does not apply to every server. For a large class of MCP servers — public biocuration APIs, documentation servers, static tool catalogs, most anonymous read-only services — the primitive set does not vary per caller. Empirical measurement by [@unempyd and @eddyflores100-lang in modelcontextprotocol#540](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/540) (September 2026) against the largest public MCP connector index found that **16,375 of 20,492 remote connectors declare no authentication at all** — four-fifths of the deployed population. For those servers, the per-caller dynamism argument has no purchase, because there is no caller identity to vary against. Every consumer sees the same tools, prompts, and resources. For that class of server, primitive advertisement is not only safe; it is what registries and orchestrators need in order to work.
 
 Specific problems documented in [ext-server-card #30](https://github.com/modelcontextprotocol/ext-server-card/issues/30) and reported by production operators:
 
@@ -215,6 +215,7 @@ Live in production:
 - [SEP-2127: MCP Server Cards](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127)
 - [SEP-2133: Extensions](./2133-extensions.md)
 - [ext-server-card #30: Add optional tool metadata to Server Card for offline discovery](https://github.com/modelcontextprotocol/ext-server-card/issues/30)
+- Measurement discussion in [modelcontextprotocol#540](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/540): comments by [@unempyd](https://github.com/unempyd) (2026-09-11, 2026-09-12) and [@eddyflores100-lang](https://github.com/eddyflores100-lang) (2026-09-18, 2026-09-23) establishing the open / late-gate / hard-gate taxonomy of unauthenticated discovery states and the 16,375 / 20,492 no-auth figure cited in the Motivation.
 - [MCP Specification](https://modelcontextprotocol.io/specification)
 - [RFC 8615: Well-Known URIs](https://datatracker.ietf.org/doc/html/rfc8615)
 - [WebMCP explainer (W3C Web Machine Learning Community Group)](https://github.com/webmachinelearning/webmcp) — first published 2025-08-13
