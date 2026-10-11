@@ -71,6 +71,15 @@ A server MAY declare only a subset of the three primitive types. For example, a 
 
 If the extension is not present on a Server Card, this carries no negative implication about the server. A server that does not declare the extension may have static primitives, dynamic primitives, or no primitives at all; clients MUST fall back to the standard runtime discovery operations in that case. A way for a server to positively signal _"I have primitives, but they cannot be declared statically"_ is left to future work.
 
+### Keeping declared and runtime primitives in sync
+
+How a server maintains the equality required by the Semantic Contract is an implementation choice; the specification does not prescribe one. Two patterns observed in practice:
+
+- **Shared data model.** The server renders the Server Card and the runtime `tools/list`, `prompts/list`, and `resources/list` responses from the same backing store. Equality is satisfied by construction; no sync mechanism is needed.
+- **Static artefact with sync check.** The Server Card is published as a separately-hosted file (static hosting, CDN, pre-generated artefact for signature verification). The server detects drift between the published declaration and the current primitive set — lazily on a runtime `*/list` call, eagerly on a primitive-set change, or on a periodic schedule — and republishes the artefact when it drifts.
+
+These are implementation guidance, not spec requirements. The specification requires equality; how a server achieves equality is a server-operator concern.
+
 ### Tools
 
 Each entry in the `tools` array is an MCP `Tool` object using the wire format defined in the current MCP specification: `name`, `description`, `inputSchema`, and optionally `outputSchema`, `annotations`, `title`. The declared list MUST equal what `tools/list` returns.
