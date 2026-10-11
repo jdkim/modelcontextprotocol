@@ -140,7 +140,7 @@ When the `extensions` field described in SEP-2133 becomes available on Server Ca
 
 ### Why this scope, and why now
 
-SEP-2127 defers primitive advertisement until a follow-on can address "variant enumeration and clear consumer contracts." This SEP does not solve variant enumeration in general. Instead, it identifies the sub-class of servers where variant enumeration is trivial — the primitive set does not vary — and specifies a consumer contract for that sub-class only. Narrowing the scope this way is deliberate: it lets us release a usable extension now, without having to wait for the harder general case to be worked out.
+SEP-2127 defers primitive advertisement until a follow-on can address "variant enumeration and clear consumer contracts." This SEP does not solve variant enumeration in general. Instead, it identifies the sub-class of servers where variant enumeration is trivial — the primitive set does not vary — and specifies a consumer contract for that sub-class only. Narrowing the scope this way is deliberate: it lets us release a usable extension now, without having to wait for the harder general case to be worked out. The sub-class is not an edge case — the empirical measurement cited in the Motivation shows it covers roughly four-fifths of the deployed MCP population — so the extension serves the dominant deployment configuration while the general case continues to develop in parallel threads (see modelcontextprotocol#540).
 
 ### Why three primitive types in v1
 
