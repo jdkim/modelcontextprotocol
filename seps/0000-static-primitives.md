@@ -11,7 +11,9 @@
 
 ## Abstract
 
-This SEP proposes a follow-on extension to [SEP-2127 (MCP Server Cards)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127). The extension lets a server include an optional inline list of its primitives — tools, prompts, and resources — inside its Server Card, for servers whose primitive set is the same for every caller. This lets consumers that read the Server Card before connecting (registries, developer portals, agent orchestrators, browser-embedded chat widgets) know what the server offers without opening a live MCP connection and without needing a caller identity. Resource entries carry three optional fields (`sizeBytes`, `volatility`, and `autoAttach`) that let clients make size-budget and freshness decisions before any content is transferred. A reference implementation is deployed at `pubdictionaries.org`, with a browser-widget client that reads and uses the extension in production.
+This SEP proposes a follow-on extension to [SEP-2127 (MCP Server Cards)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127). The extension lets a server include an optional inline list of its primitives — tools, prompts, and resources — inside its Server Card, for servers whose primitive set is the same for every caller. This lets consumers that read the Server Card before connecting (registries, developer portals, agent orchestrators, browser-embedded chat widgets) know what the server offers without opening a live MCP connection and without needing a caller identity. Resource entries carry three optional fields (`size`, `volatility`, and `autoAttach`) that let clients make size-budget and freshness decisions before any content is transferred. A reference implementation is deployed at `pubdictionaries.org`, with a browser-widget client that reads and uses the extension in production.
+
+Conceptually, this is a **server-published cache** of what runtime `*/list` operations return for any caller: a URL-addressable, publicly readable snapshot of the primitive catalog. The MUST-equal contract specified below is cache coherence between the published snapshot and the runtime source; the optional `volatility` field is a cache-staleness directive; "fall back to runtime discovery if the extension is absent" is a cache-miss fallback. The design aligns with the familiar web pattern of server-published static metadata (`sitemap.xml`, `robots.txt`, `.well-known/*` catalogs).
 
 ## Motivation
 
@@ -92,17 +94,21 @@ The extension advertises the prompt _metadata_ (what `prompts/list` returns), no
 
 ### Resources
 
-Each entry in the `resources` array is an MCP `Resource` object (`uri`, `name`, `mimeType`, `description`) with three additional optional fields:
+Each entry in the `resources` array is an MCP `Resource` object (`uri`, `name`, `mimeType`, `description`, and the optional base `size` field) with two additional optional fields and a strengthened contract on `size`:
 
 ```typescript
 interface StaticPrimitiveResource extends Resource {
   /**
-   * The exact byte count of the payload that resources/read would return.
-   * When present, this value MUST equal the byte length of the read
-   * response body. A server that cannot compute the size cheaply SHOULD
-   * omit the field rather than guess.
+   * (Inherited from the base `Resource` interface.) The byte count of
+   * the payload that resources/read would return. In the context of
+   * this extension, `size` MUST be exact when present — this strengthens
+   * the base specification, which does not formally require exactness.
+   * A server that cannot compute the size cheaply SHOULD omit the field
+   * rather than guess. Reusing the base field (rather than introducing a
+   * parallel one) keeps the extension's resource shape aligned with the
+   * base `Resource` interface.
    */
-  sizeBytes?: number;
+  size?: number;
 
   /**
    * How the resource's content changes across turns of a client's session.
@@ -126,10 +132,10 @@ interface StaticPrimitiveResource extends Resource {
 
 **Notes on the meaning of each field:**
 
-- `sizeBytes` is exact when it is present, so that clients can make budget decisions without guessing. Servers that cannot compute the exact size cheaply SHOULD omit the field. Clients MUST treat an absent `sizeBytes` as a normal case (for example, by fetching the payload and trimming it to the budget, or by applying another post-fetch budget mechanism) and MUST NOT read the absence as a signal that the server is not following the specification.
+- `size` is exact when it is present, so that clients can make budget decisions without guessing. Servers that cannot compute the exact size cheaply SHOULD omit the field. Clients MUST treat an absent `size` as a normal case (for example, by fetching the payload and trimming it to the budget, or by applying another post-fetch budget mechanism) and MUST NOT read the absence as a signal that the server is not following the specification.
 - `volatility` controls _when the client re-reads the resource from the server_. It does not control whether the resource is included in a given turn's context. A `"stable"` resource MAY be read once and the payload kept in a cache for later turns. A `"volatile"` resource SHOULD NOT be read when the client starts (a cached copy from start-up is likely already out of date by the time the first turn is sent) and SHOULD be re-read from the server before each turn that includes it. Whether the payload (fetched or cached) is _added to a given turn's system prompt_ is a separate decision the client makes based on its own budget.
 - **Whether to include the payload in each turn is a separate decision from volatility.** A client that has cached a stable resource, and has budget for it, SHOULD include the payload in every turn's context — not only in the first turn. A client that reads a stable resource once and then includes it only in turn 1 will find the model spending later turns rediscovering the same resource through runtime tools, since the model does not see the cached payload if the client did not attach it to that turn. A server that declares `volatility: "stable"` should expect clients to keep the payload available on every turn, not to include it only once.
-- For `"volatile"` resources, clients SHOULD re-check the budget on every re-read, because a declared `sizeBytes` may have changed between turns.
+- For `"volatile"` resources, clients SHOULD re-check the budget on every re-read, because a declared `size` may have changed between turns.
 - `autoAttach` is decided by two independent sources: the server's declaration (this field), and the client's own budget or policy. A client MAY choose not to include a resource even when the server declared `autoAttach: true`, if the resource exceeds a local size or count budget. A client SHOULD NOT auto-attach a resource for which the server declared `autoAttach: false`.
 
 ### Migration to Server Card `extensions` field
@@ -159,9 +165,9 @@ Two placements were considered for the resource payload:
 
 Option Y can save more round trips, but it has no upper limit on cost: a client fetching a Server Card cannot know how large that Server Card will be, and a server's declared resource payloads could make it grow to any size. Option X has a bounded cost — the extension itself only carries metadata — and it delays content transfer to the point where the client actually uses the content, at which point the client can apply its own budget. The reference implementation confirms Option X works well: the production catalog's declared size (about 30 KB) is nearly four times the client's 8,000-byte budget, so the client skips including it. If the bytes had been in the Server Card itself, the client would have downloaded them just to make that decision.
 
-### Why `sizeBytes` is exact when it is present
+### Why `size` is exact when it is present
 
-Approximate size hints make budget decisions unclear: a resource declared "about 8 KB" is not obviously affordable against an 8 KB budget. An exact `sizeBytes` gives clients a value they can act on directly. The cost of exactness, however, is not uniform across servers. A server whose `resources/list` already materialises the payload can compute the byte count for free. A server whose listing is otherwise payload-independent must now serialise the payload to answer the listing, which can turn a cheap operation into an expensive one — and in production that cost can be high enough to make `resources/list` time out under proxy or load conditions the specification alone does not anticipate. The field is therefore optional throughout: servers for which exact computation is expensive SHOULD omit it rather than guess, and the absence is a normal case, not a signal of non-compliance.
+Approximate size hints make budget decisions unclear: a resource declared "about 8 KB" is not obviously affordable against an 8 KB budget. An exact `size` gives clients a value they can act on directly. The cost of exactness, however, is not uniform across servers. A server whose `resources/list` already materialises the payload can compute the byte count for free. A server whose listing is otherwise payload-independent must now serialise the payload to answer the listing, which can turn a cheap operation into an expensive one — and in production that cost can be high enough to make `resources/list` time out under proxy or load conditions the specification alone does not anticipate. The field is therefore optional throughout: servers for which exact computation is expensive SHOULD omit it rather than guess, and the absence is a normal case, not a signal of non-compliance.
 
 ### Why two separate fields (`volatility` and `autoAttach`)
 
@@ -193,15 +199,15 @@ The fields in this v1 are optimization hints, so fail-open under `_meta` is safe
 
 - **The extension payload does not carry credentials or session-specific data.** By contract, all declared primitives are what any caller — including an unauthenticated one — would see through runtime `*/list`. There is no way for the extension to grant elevated access.
 - **Fail-open behaviour under `_meta`.** A client that does not recognise the extension identifier will not act on `autoAttach: false` or on the other declarations. This is acceptable when the fields are only optimization hints (which is the case for every field in v1) — the fallback is the behaviour clients had before the extension existed. If a future field's meaning is that ignoring it could have security or privacy consequences, that field SHOULD live under the `extensions` slot (once available) rather than under `_meta`.
-- **`sizeBytes` disclosure is negligible.** The field reveals the byte count of a resource whose URI and MIME type are already public through `resources/list`. An attacker who fetches the resource learns the same information.
+- **`size` disclosure is negligible.** The field reveals the byte count of a resource whose URI and MIME type are already public through `resources/list`. An attacker who fetches the resource learns the same information.
 - **Cache freshness.** A client that respects `volatility: "stable"` may serve cached content that has become stale if the server has changed the resource. This is a freshness question, not a security one; the client MAY subscribe through MCP's own `resources/subscribe` to receive change notifications, which this extension does not affect.
 
 ## Reference Implementation
 
 Live in production:
 
-- **Server**: `pubdictionaries.org` (repository: `pubdictionaries` on `master`, extension implemented in `app/controllers/mcp_controller.rb`) publishes six MCP tools, one prompt (`annotate`), and one resource (`pubdictionaries://dictionaries`) under `_meta["io.modelcontextprotocol/static-primitives"]` on its runtime `resources/list` response. Verified live: `curl -X POST https://pubdictionaries.org/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}'` returns the dictionary catalog entry with `sizeBytes`, `volatility: "stable"`, and `autoAttach: true` under the extension key.
-- **Client**: `llm_meta_widget` 0.8.2, published on RubyGems as a Ruby gem and on npm as `@aibranch/llm-meta-widget` (a single bundled custom element usable from any website), running in the annotation-page widget at <https://pubdictionaries.org/text_annotation>. Consumes all three primitive types; makes budget decisions from `sizeBytes` before payload transfer; honours `volatility` and `autoAttach`; includes stable resources within budget on every turn.
+- **Server**: `pubdictionaries.org` (repository: `pubdictionaries` on `master`, extension implemented in `app/controllers/mcp_controller.rb`) publishes six MCP tools, one prompt (`annotate`), and one resource (`pubdictionaries://dictionaries`) under `_meta["io.modelcontextprotocol/static-primitives"]` on its runtime `resources/list` response. Verified live: `curl -X POST https://pubdictionaries.org/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}'` returns the dictionary catalog entry with `size`, `volatility: "stable"`, and `autoAttach: true` under the extension key.
+- **Client**: `llm_meta_widget` 0.8.2, published on RubyGems as a Ruby gem and on npm as `@aibranch/llm-meta-widget` (a single bundled custom element usable from any website), running in the annotation-page widget at <https://pubdictionaries.org/text_annotation>. Consumes all three primitive types; makes budget decisions from `size` before payload transfer; honours `volatility` and `autoAttach`; includes stable resources within budget on every turn.
 - **Verification**: the server RSpec test suite, the widget's test suite, and a browser end-to-end run against the published gem. The end-to-end test reads the actual outgoing `fetch` request bodies from the browser, rather than checking what the model wrote in its reply. The evidence is therefore the actual request payload, not the model's own report of what it did.
 - **Production evidence for the size gate**: development declares roughly 1.3 KB for the dictionary catalog and includes it in every turn's context; production declares roughly 30 KB against the client's 8,000-byte budget and skips inclusion, falling back to the pre-existing `list_dictionaries` tool. Same code path, opposite behaviour, decided by a single declared number.
 
@@ -214,7 +220,7 @@ Live in production:
 ## Future Work
 
 - **A signal for servers that have primitives but cannot declare them statically.** Some registries want a way for such servers to say "I have primitives, but you must fetch them at runtime," instead of being silent. A future revision or a companion SEP could add a `dynamic: true` marker, either at the extension level or per primitive type.
-- **Inline content for small resources, with a size cap.** Option Y is still attractive for small resources (short lookup tables, small prompt examples). A future revision could allow inline content when `sizeBytes` is below a declared cap.
+- **Inline content for small resources, with a size cap.** Option Y is still attractive for small resources (short lookup tables, small prompt examples). A future revision could allow inline content when `size` is below a declared cap.
 - **Alignment with SEP-2934's DNS-based discovery.** If DNS-based discovery is finalized, the extension should describe how a Server Card found through DNS carries its `static-primitives` payload.
 - **Guidance on prompt arguments in embedded contexts.** Experience with the reference implementation gave a general observation about `prompts/get` in embedded chat widgets: an in-page assistant exists to help people who do not know the interface, so declaring any prompt argument as _required_ creates a paradox — users who could fill the argument in do not need the assistant, and users who cannot are refused. The valuable part of `prompts/get` in these contexts is the server-authored _instruction to the model_ (numbered steps, references to tool names, the shape of the task), which is closer to a fragment of a system prompt than to a template with slots for user input. Prompt authors targeting embedded contexts SHOULD treat all arguments as optional hints, and place the task itself in the prompt payload. This is guidance for prompt authors, not a schema change; a separate best-practice document could capture it.
 - **Extension negotiation for fields that touch security.** If a future field's meaning is that ignoring it could have security consequences, that field should target the `extensions` slot on Server Card (fail-closed), not `_meta` (fail-open).
