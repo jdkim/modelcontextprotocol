@@ -67,11 +67,15 @@ Implementations MAY also include the per-entry fields (see Resources below) on t
 
 ### HTML-delivery mode
 
-The extension's envelope can also be delivered inside an HTML document, for the case where a page declares its own primitives to an assistant embedded in that page. A card delivered this way is a `<script>` element whose `type` attribute names a dedicated media type:
+A page can also deliver a Server Card inside its own HTML, for the case where the page declares its own primitives to an assistant embedded in that page. The card is a `<script>` element whose `type` attribute names a dedicated media type, and the content is a **full Server Card** (not merely an `_meta` envelope) whose transport is page-local:
 
 ```html
 <script type="application/mcp-static-primitives+json">
 {
+  "$schema": "https://modelcontextprotocol.io/schemas/sep-2127/server-card",
+  "name": "org.pubdictionaries/text-annotation",
+  "version": "1.0.0",
+  "remotes": [ { "type": "page-global", "global": "mcp" } ],
   "_meta": {
     "io.modelcontextprotocol/static-primitives": {
       "tools":     [ /* ... */ ],
@@ -83,9 +87,25 @@ The extension's envelope can also be delivered inside an HTML document, for the 
 </script>
 ```
 
+**The card is a full Server Card.** HTML-delivery is not a new envelope — it is a Server Card whose transport is "this document," delivered through the DOM rather than through an HTTP response. The same parser reads both deliveries; the only difference is where the card was found and what transport the `remotes` entry names.
+
+**Page-local transport (`page-global`).** The `remotes` entry declares a page-local transport with `type: "page-global"` and a `global` field naming a JavaScript global under which handler maps live. The global is **declared, never defaulted** — a short default name would be a collision risk on a shared page, so each page chooses its own global name, mirroring how a Server Card always states its endpoint explicitly rather than relying on a convention.
+
+**Handler structure under the declared global.** The named global holds three maps, one per primitive type, each keyed by the identifier its own operation takes:
+
+```javascript
+window.mcp = {
+  tools:     { set_text: fn, set_dictionaries: fn },   // keyed by `name` for `tools/call`
+  prompts:   { annotate: fn },                          // keyed by `name` for `prompts/get`
+  resources: { "page:text": fn }                        // keyed by `uri` for `resources/read`
+};
+```
+
+A consumer that parses the card finds the global, matches identifiers to handlers, and dispatches locally — the identifier the handler takes is the identifier each MCP operation already carries.
+
 **Discovery is by `type` attribute.** A client reads the document and matches `script[type="application/mcp-static-primitives+json"]`. This mirrors JSON-LD (`application/ld+json`) and other data-only script types. The `id` of the `<script>` element carries no meaning — the media type is the locator — so no `id` convention is required.
 
-**Payload is unchanged.** The content of each block is the same `_meta` envelope used for URL-delivered Server Cards, with the same `tools`, `prompts`, and `resources` arrays and the same per-entry fields. A single parser can read both transports.
+**Payload shape.** The content of each block is a full Server Card; the `_meta` envelope's static-primitives extension carries the same `tools`, `prompts`, and `resources` arrays and the same per-entry fields as in URL-delivery mode. A single parser can read both transports.
 
 **Multiple blocks in one document merge.** A page assembled from components may have more than one block, each contributing primitives from its component. A client reads every block in the document and concatenates the arrays by primitive type. **Duplicate identifiers across blocks are an authoring error** — specifically, the same `name` within `tools` or `prompts`, or the same `uri` within `resources`. A client that encounters a duplicate SHOULD report an error, SHOULD omit every copy of the duplicated identifier from its working set, and SHOULD retain all other primitives from the merged declaration. Rejecting the entire merged declaration because of one duplicated identifier would be disproportionate — a page assembled from components can have a defect in one component while the rest are valid, and the rest should remain usable while the author investigates. The reporting is what prevents silent precedence resolution; the retention is what keeps the blast radius proportional. Clients MUST NOT silently pick one copy of a duplicate.
 
@@ -217,6 +237,18 @@ A Server Card needs no canonical filename because the `/.well-known/` path is th
 A dedicated media type (`application/mcp-static-primitives+json`) on `<script>` follows a well-established pattern for data-only script content: JSON-LD (`application/ld+json`), import maps, and speculation rules all discover by `type`. The media type is the block's identity; the `id` attribute is purely informational.
 
 The alternative considered and rejected: a marker attribute on a standard JSON script, `<script type="application/json" data-mcp-static-primitives>`. Its one advantage is needing no media-type registration. A dedicated type was preferred because the type IS the block's identity and matches the JSON-LD precedent; relying on an attribute marker would separate "what the block is" (its `type`) from "how to find it" (the attribute), making static analysis and tooling harder. The media type is unregistered in v1, like the `page:` URI scheme — both are experimental and intended to formalise in future revisions.
+
+### Why a page declares its transport
+
+A Server Card always states its endpoint rather than relying on a convention: `remotes` carries the URL, `type` identifies the transport, nothing is implicit. The HTML-delivery mode preserves this discipline. A page that only declares its primitives — without saying where their implementations live — is only half discoverable: a consumer that found the card still cannot invoke anything, because the handler locations are a private contract between the page and whichever reader happens to know them.
+
+The `page-global` transport makes the location explicit. A consumer that parses the card reads the declared global, dispatches by the identifier each operation already takes, and invokes locally. The global is declared, never defaulted, for the same reason Server Cards state endpoints explicitly: a well-known default (such as `window.mcp`) would be a collision risk on a shared page.
+
+In v1 the content under the global is three plain handler maps, keyed by `name` (tools, prompts) or `uri` (resources). The `type` discriminator leaves room for alternatives — a future `page-jsonrpc` could point to a single JSON-RPC-shaped responder — but plain maps are the simpler shape for the common case, and simpler shapes travel further.
+
+The `remotes` field name has a slight semantic imprecision in this context — the transport is page-local, not remote — but it is kept to preserve parser consistency between URL-delivered and HTML-delivered cards. SEP-2127 may later generalise the field name (to `transports` or `endpoints`); this extension aligns with whatever SEP-2127 settles on.
+
+**Why `page-global` has no `*/list` operations.** In the Server Card case (URL-delivery), runtime `*/list` is the source of truth and the static declaration acts as a public cache — the extension admits that MCP primitives can be dynamic, although the static sub-class is the majority. In the page card case (HTML-delivery), the Semantic Contract above states this directly: the in-document declaration **is** the source of truth, not a cache of a runtime source. Dynamic list operations have no job because there is no runtime source to query. The asymmetry between `page-global` and other MCP transports is not a missing capability — it is the direct consequence of HTML-delivery's narrower contract, which follows from the SEP's static-primitives premise.
 
 ### Why `_meta` in v1, `extensions` later
 
