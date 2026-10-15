@@ -44,7 +44,6 @@ The extension is carried in the Server Card `_meta` object, under its extension 
 
 ```json
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "org.pubdictionaries/mcp",
   "version": "1.2.3",
   "description": "Biocuration dictionary lookup and annotation",
@@ -72,7 +71,6 @@ A page can also deliver a Server Card inside its own HTML, for the case where th
 ```html
 <script type="application/mcp-static-primitives+json">
 {
-  "$schema": "https://modelcontextprotocol.io/schemas/sep-2127/server-card",
   "name": "org.pubdictionaries/text-annotation",
   "version": "1.0.0",
   "remotes": [ { "type": "page-global", "global": "mcp" } ],
@@ -242,7 +240,7 @@ The alternative considered and rejected: a marker attribute on a standard JSON s
 
 A Server Card always states its endpoint rather than relying on a convention: `remotes` carries the URL, `type` identifies the transport, nothing is implicit. The HTML-delivery mode preserves this discipline. A page that only declares its primitives — without saying where their implementations live — is only half discoverable: a consumer that found the card still cannot invoke anything, because the handler locations are a private contract between the page and whichever reader happens to know them.
 
-The `page-global` transport makes the location explicit. A consumer that parses the card reads the declared global, dispatches by the identifier each operation already takes, and invokes locally. The global is declared, never defaulted, for the same reason Server Cards state endpoints explicitly: a well-known default (such as `window.mcp`) would be a collision risk on a shared page.
+The `page-global` transport makes the location explicit. A consumer that parses the card reads the declared global, dispatches by the identifier each operation already takes, and invokes locally. The global is declared, never defaulted, for the same reason Server Cards state endpoints explicitly: a well-known default (such as `window.mcp`) would be a collision risk on a shared page. The contrast with WebMCP sharpens the point: WebMCP can claim a well-known default (`document.modelContext`) because it is a platform proposal that owns the surface, whereas an extension running on someone else's page cannot.
 
 In v1 the content under the global is three plain handler maps, keyed by `name` (tools, prompts) or `uri` (resources). The `type` discriminator leaves room for alternatives — a future `page-jsonrpc` could point to a single JSON-RPC-shaped responder — but plain maps are the simpler shape for the common case, and simpler shapes travel further.
 
