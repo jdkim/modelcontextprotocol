@@ -45,7 +45,7 @@ The extension is carried in the Server Card `_meta` object, under its extension 
 ```json
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
-  "name": "org.pubannotation/pubdictionaries",
+  "name": "org.pubdictionaries/mcp",
   "version": "1.2.3",
   "description": "Biocuration dictionary lookup and annotation",
   "remotes": [
@@ -276,7 +276,7 @@ The fields in this v1 are optimization hints, so fail-open under `_meta` is safe
 
 Live in production:
 
-- **Server**: `pubdictionaries.org` (repository: `pubdictionaries` on `master`, extension implemented in `app/controllers/mcp_controller.rb`) publishes six MCP tools, one prompt (`annotate`), and one resource (`pubdictionaries://dictionaries`) under `_meta["io.modelcontextprotocol/static-primitives"]` on its runtime `resources/list` response. Verified live: `curl -X POST https://pubdictionaries.org/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}'` returns the dictionary catalog entry with `size`, `volatility: "stable"`, and `autoAttach: true` under the extension key.
+- **Server**: `pubdictionaries.org` (repository: `pubdictionaries` on `master`, extension implemented in `app/controllers/mcp_controller.rb`) publishes six tools through `tools/list` and one resource (`pubdictionaries://dictionaries`) through `resources/list`. On the resource entry it carries the extension's per-entry fields: `volatility: "stable"` and `autoAttach: true` under `_meta["io.modelcontextprotocol/static-primitives"]`, with `size` carried as the base `Resource` field. Verified live: `curl -X POST https://pubdictionaries.org/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}'` returns the dictionary catalog entry with `size: 30026`, and `volatility: "stable"` plus `autoAttach: true` under the extension key.
 - **Client**: `llm_meta_widget` 0.11.1, published on RubyGems as a Ruby gem and on npm as `@aibranch/llm-meta-widget` (a single bundled custom element usable from any website), running in the annotation-page widget at <https://pubdictionaries.org/text_annotation>. Consumes all three primitive types; makes budget decisions from `size` before payload transfer; honours `volatility` and `autoAttach`; includes stable resources within budget on every turn.
 - **HTML-delivery mode in production**: `llm_meta_widget` 0.11.1 implements the HTML-delivery mode end-to-end, including the page-local transport. It discovers cards by media type (`script[type="application/mcp-static-primitives+json"]`), reads the declared transport entry, resolves the named global, and dispatches by the identifier each operation takes. On PubDictionaries' text-annotation page the widget consumes a single in-document card declaring 7 tools, 1 prompt, and 6 resources, with the three handler maps under `window.mcp.tools`, `window.mcp.prompts`, and `window.mcp.resources` keyed by `name`, `name`, and `uri` respectively. Verified by a real browser turn. In-page MCP discovery is fully declarative, demonstrated in production rather than asserted.
 - **Verification**: the server RSpec test suite, the widget's test suite, and a browser end-to-end run against the published gem. The end-to-end test reads the actual outgoing `fetch` request bodies from the browser, rather than checking what the model wrote in its reply. The evidence is therefore the actual request payload, not the model's own report of what it did.
@@ -306,4 +306,4 @@ Live in production:
 - [RFC 8615: Well-Known URIs](https://datatracker.ietf.org/doc/html/rfc8615)
 - [WebMCP explainer (W3C Web Machine Learning Community Group)](https://github.com/webmachinelearning/webmcp) — first published 2025-08-13
 - [WebMCP implementer documentation (Chrome)](https://developer.chrome.com/docs/ai/webmcp)
-- Reference implementation: `pubdictionaries` server (branch `master`) and `llm_meta_widget` 0.8.2 (RubyGems; also `@aibranch/llm-meta-widget` on npm)
+- Reference implementation: `pubdictionaries` server (branch `master`) and `llm_meta_widget` on RubyGems (also `@aibranch/llm-meta-widget` on npm)
