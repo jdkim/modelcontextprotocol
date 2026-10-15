@@ -65,9 +65,39 @@ When the top-level `extensions` field described in SEP-2133 becomes available on
 
 Implementations MAY also include the per-entry fields (see Resources below) on the runtime `resources/list` response, under the same `_meta` key. This gives a consistent shape to clients that reach the server through runtime discovery rather than through a Server Card. The reference implementation does this today, because Server Card discovery is still being finalized.
 
+### HTML-delivery mode
+
+The extension's envelope can also be delivered inside an HTML document, for the case where a page declares its own primitives to an assistant embedded in that page. A card delivered this way is a `<script>` element whose `type` attribute names a dedicated media type:
+
+```html
+<script type="application/mcp-static-primitives+json">
+{
+  "_meta": {
+    "io.modelcontextprotocol/static-primitives": {
+      "tools":     [ /* ... */ ],
+      "prompts":   [ /* ... */ ],
+      "resources": [ /* ... */ ]
+    }
+  }
+}
+</script>
+```
+
+**Discovery is by `type` attribute.** A client reads the document and matches `script[type="application/mcp-static-primitives+json"]`. This mirrors JSON-LD (`application/ld+json`) and other data-only script types. The `id` of the `<script>` element carries no meaning — the media type is the locator — so no `id` convention is required.
+
+**Payload is unchanged.** The content of each block is the same `_meta` envelope used for URL-delivered Server Cards, with the same `tools`, `prompts`, and `resources` arrays and the same per-entry fields. A single parser can read both transports.
+
+**Multiple blocks in one document merge.** A page assembled from components may have more than one block, each contributing primitives from its component. A client reads every block in the document and concatenates the arrays by primitive type. **Duplicate identifiers across blocks are an error** — specifically, the same `name` within `tools` or `prompts`, or the same `uri` within `resources`. A client that encounters a duplicate SHOULD report an error and SHOULD NOT silently pick one. This forces authors to make overrides explicit (by removing the duplicate) rather than relying on a precedence rule.
+
+**No script-execution consideration.** Browsers do not execute scripts with an unrecognized `type` attribute. A `<script type="application/mcp-static-primitives+json">` block is treated as inert data, equivalent to how `application/ld+json` is handled. CSP `script-src` policies do not need to allow this type specifically.
+
+**Resource addressing.** Resources declared in HTML-delivered cards use the URI scheme `page:<name>` with no path hierarchy. A page has one namespace; the scheme is a client-local reference, not a resolvable URL. The scheme is experimental and unregistered in v1 of this extension; future revisions may refine or formalise it.
+
 ### Semantic Contract
 
 For each primitive-type array (`tools`, `prompts`, `resources`) that a server includes in the extension, the declared entries MUST be the same entries the server's `tools/list`, `prompts/list`, or `resources/list` operation returns for **any** caller — including an unauthenticated one. If the server's primitive set for a given type varies by caller identity, session, feature flag, or other runtime state, the server MUST NOT include that primitive-type array in the extension.
+
+The MUST-equal clause above applies to **URL-delivery mode**, where the extension payload is a cached snapshot of the server's runtime `*/list` response. In **HTML-delivery mode**, there is no server-side runtime `*/list` to be a cache of: the page's in-document declaration **is** the source of truth that the embedded assistant acts on. The equality clause applies trivially (the declaration equals itself), and clients need not reconcile the declaration against any runtime source.
 
 A server MAY declare only a subset of the three primitive types. For example, a server whose tools are the same for every caller but whose resources vary per caller may include `tools` in the extension and omit `resources`.
 
@@ -207,7 +237,8 @@ The fields in this v1 are optimization hints, so fail-open under `_meta` is safe
 Live in production:
 
 - **Server**: `pubdictionaries.org` (repository: `pubdictionaries` on `master`, extension implemented in `app/controllers/mcp_controller.rb`) publishes six MCP tools, one prompt (`annotate`), and one resource (`pubdictionaries://dictionaries`) under `_meta["io.modelcontextprotocol/static-primitives"]` on its runtime `resources/list` response. Verified live: `curl -X POST https://pubdictionaries.org/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}'` returns the dictionary catalog entry with `size`, `volatility: "stable"`, and `autoAttach: true` under the extension key.
-- **Client**: `llm_meta_widget` 0.8.2, published on RubyGems as a Ruby gem and on npm as `@aibranch/llm-meta-widget` (a single bundled custom element usable from any website), running in the annotation-page widget at <https://pubdictionaries.org/text_annotation>. Consumes all three primitive types; makes budget decisions from `size` before payload transfer; honours `volatility` and `autoAttach`; includes stable resources within budget on every turn.
+- **Client**: `llm_meta_widget` 0.9.1, published on RubyGems as a Ruby gem and on npm as `@aibranch/llm-meta-widget` (a single bundled custom element usable from any website), running in the annotation-page widget at <https://pubdictionaries.org/text_annotation>. Consumes all three primitive types; makes budget decisions from `size` before payload transfer; honours `volatility` and `autoAttach`; includes stable resources within budget on every turn.
+- **HTML-delivery mode (live)**: the same PubDictionaries page delivers an additional `application/mcp-static-primitives+json` block inside the HTML document, declaring 7 tools, 1 prompt, and 6 resources (addressed as `page:<name>` per the HTML-delivery mode subsection). The widget reads both the URL-delivered Server Card (for the host-side primitives) and the in-document block (for the page-side primitives) through the same parser.
 - **Verification**: the server RSpec test suite, the widget's test suite, and a browser end-to-end run against the published gem. The end-to-end test reads the actual outgoing `fetch` request bodies from the browser, rather than checking what the model wrote in its reply. The evidence is therefore the actual request payload, not the model's own report of what it did.
 - **Production evidence for the size gate**: development declares roughly 1.3 KB for the dictionary catalog and includes it in every turn's context; production declares roughly 30 KB against the client's 8,000-byte budget and skips inclusion, falling back to the pre-existing `list_dictionaries` tool. Same code path, opposite behaviour, decided by a single declared number.
 
