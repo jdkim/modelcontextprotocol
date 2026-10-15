@@ -85,7 +85,7 @@ A page can also deliver a Server Card inside its own HTML, for the case where th
 </script>
 ```
 
-**The card is a full Server Card.** HTML-delivery is not a new envelope — it is a Server Card whose transport is "this document," delivered through the DOM rather than through an HTTP response. The same parser reads both deliveries; the only difference is where the card was found and what transport the `remotes` entry names.
+**The card is a full Server Card** (informally, a "page card"). HTML-delivery is not a new envelope — it is a Server Card whose transport is "this document," delivered through the DOM rather than through an HTTP response. The same parser reads both deliveries; the only difference is where the card was found and what transport the `remotes` entry names.
 
 **Page-local transport (`page-global`).** The `remotes` entry declares a page-local transport with `type: "page-global"` and a `global` field naming a JavaScript global under which handler maps live. The global is **declared, never defaulted** — a short default name would be a collision risk on a shared page, so each page chooses its own global name, mirroring how a Server Card always states its endpoint explicitly rather than relying on a convention.
 
