@@ -60,7 +60,7 @@ The extension is carried in the Server Card `_meta` object, under its extension 
 }
 ```
 
-When the top-level `extensions` field described in SEP-2133 becomes available on Server Card, this extension SHOULD migrate to `extensions["io.modelcontextprotocol/static-primitives"]`. `_meta` remains a valid placement for backward compatibility.
+When `Remote.extensions` becomes available on Server Card (per [ext-server-card#55](https://github.com/modelcontextprotocol/ext-server-card/pull/55) and the Server Card Working Group's placement convention `ServerCard.remotes[x].extensions[extensionIdentifier]`, following how `ServerCapabilities.extensions` works), URL-delivery mode SHOULD migrate to `Remote.extensions["io.modelcontextprotocol/static-primitives"]`. `_meta` remains a valid placement for backward compatibility. HTML-delivery mode does not migrate — a page card has no top-level `remotes` entry (see §HTML-delivery mode) and keeps the `_meta` placement indefinitely. See **Migration to Server Card `Remote.extensions`** below.
 
 Implementations MAY also include the per-entry fields (see Resources below) on the runtime `resources/list` response, under the same `_meta` key. This gives a consistent shape to clients that reach the server through runtime discovery rather than through a Server Card. The reference implementation does this today, because Server Card discovery is still being finalized.
 
@@ -194,9 +194,13 @@ interface StaticPrimitiveResource extends Resource {
 - For `"volatile"` resources, clients SHOULD re-check the budget on every re-read, because a declared `size` may have changed between turns.
 - `autoAttach` is decided by two independent sources: the server's declaration (this field), and the client's own budget or policy. A client MAY choose not to include a resource even when the server declared `autoAttach: true`, if the resource exceeds a local size or count budget. A client SHOULD NOT auto-attach a resource for which the server declared `autoAttach: false`.
 
-### Migration to Server Card `extensions` field
+### Migration to Server Card `Remote.extensions`
 
-When the `extensions` field described in SEP-2133 becomes available on Server Card (a map from extension identifiers to per-extension settings), this extension SHOULD move from `_meta["io.modelcontextprotocol/static-primitives"]` to `extensions["io.modelcontextprotocol/static-primitives"]` with the same payload shape. The `_meta` placement remains valid indefinitely, but `extensions` is preferred where it is available: a client must recognise the extension identifier in order to see the payload at all, which is safer for behaviour that depends on the client being extension-aware (see Security Implications).
+When `Remote.extensions` becomes available on Server Card (per [ext-server-card#55](https://github.com/modelcontextprotocol/ext-server-card/pull/55) and the Server Card Working Group's placement convention: `ServerCard.remotes[x].extensions[extensionIdentifier]`), **URL-delivery mode** SHOULD move from `_meta["io.modelcontextprotocol/static-primitives"]` to `Remote.extensions["io.modelcontextprotocol/static-primitives"]` with the same payload shape, placed on the server's `Remote` entry (or on each entry if the server declares multiple remotes carrying transport-agnostic server-level data). The `_meta` placement remains valid indefinitely, but `Remote.extensions` is preferred where it is available: a client must recognise the extension identifier in order to see the payload at all, which is safer for behaviour that depends on the client being extension-aware (see Security Implications).
+
+**HTML-delivery mode does not migrate.** A page card has no top-level `remotes` entry (see §HTML-delivery mode's "No `remotes` entry" subsection), so there is no `Remote.extensions` slot for the extension's payload. HTML-delivery mode keeps the `_meta` placement indefinitely, with the `transports` array inside the extension's own data continuing to specify page-local dispatch. The two delivery modes' migration paths diverge because they address different schema constraints: URL-delivery mode's `_meta` placement is a bridge until `Remote.extensions` lands, while HTML-delivery mode's `_meta[...].transports` placement is a response to `Remote.type`'s HTTP-only enum, which belongs to a separate future SEP (see Future Work).
+
+**Note on PR #55's data-vs-support separation.** PR #55 specifies that `Remote.extensions` carries data, not support claims: a client MUST NOT infer that a server supports an extension from the presence of its data in `Remote.extensions`. Support is negotiated via `capabilities.extensions` or `server/discover` (session-level), which may vary per caller. For this extension, the data IS the contract — a client that finds `static-primitives` data under `Remote.extensions` reads it against the Semantic Contract specified above, without needing a separate support-negotiation step. The Semantic Contract applies to the declared data regardless of its schema location.
 
 ## Rationale
 
@@ -256,14 +260,14 @@ In v1 the content under a `page-global` entry's declared global is three plain h
 
 **Why the `*/list` operations don't apply.** In the URL-delivery case, runtime `*/list` is the source of truth and the static declaration acts as a public cache — the extension admits that MCP primitives can be dynamic, although the static sub-class is the majority. In the HTML-delivery case, the in-document declaration **is** the source of truth, not a cache of a runtime source. Dynamic list operations have no job because there is no runtime source to query. The asymmetry is not a missing capability — it is the direct consequence of HTML-delivery's narrower contract, which follows from the SEP's static-primitives premise.
 
-### Why `_meta` in v1, `extensions` later
+### Why `_meta` in v1, `Remote.extensions` later
 
-The `extensions` field described in SEP-2133 does not yet exist on Server Card. `_meta` is the correct extension slot today. When `extensions` becomes available, this extension SHOULD move there. The distinction matters for declarations that touch security:
+`Remote.extensions` does not yet exist on Server Card — [ext-server-card#55](https://github.com/modelcontextprotocol/ext-server-card/pull/55) proposes adding it, with the Server Card Working Group's placement convention `ServerCard.remotes[x].extensions[extensionIdentifier]`. `_meta` is the correct extension slot today. When `Remote.extensions` becomes available, URL-delivery mode SHOULD move there. The distinction matters for declarations that touch security:
 
 - Under `_meta`, a client that does not recognise the extension identifier simply ignores the vendor-namespaced payload — no error, no warning. This is "fail-open": ignoring the extension is safe as long as ignoring it does not have consequences.
-- Under `extensions`, a client is expected to recognise the extension identifier in order to see the payload at all. This is "fail-closed": a client that does not know about the extension does not see its declarations, which is safer when disregarding them could cause harm.
+- Under `Remote.extensions`, a client is expected to recognise the extension identifier in order to see the payload at all. This is "fail-closed": a client that does not know about the extension does not see its declarations, which is safer when disregarding them could cause harm.
 
-The fields in this v1 are optimization hints, so fail-open under `_meta` is safe. Future extensions whose declarations matter for security should target `extensions` from the start.
+The fields in this v1 are optimization hints, so fail-open under `_meta` is safe. Future extensions whose declarations matter for security should target `Remote.extensions` from the start.
 
 ## Backward Compatibility
 
