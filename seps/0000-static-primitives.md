@@ -97,6 +97,8 @@ window.mcp = {
 };
 ```
 
+**Non-conformant top-level `remotes`.** A client that encounters a top-level `remotes` entry in an HTML-delivered card SHOULD report it (the entry is non-conformant per the subsection above) rather than silently ignore it — explicit reporting surfaces stale-deployment errors that silent omission would hide. "Stop reading a field" and "stop reporting a field" are separate decisions when deprecating a field; this SEP specifies both, deliberately.
+
 A consumer that parses the card iterates the `transports` array in declared order and selects the first entry whose `type` it supports. **The declared order expresses the page author's preference**: a client MUST process the array in order and MUST NOT skip an entry it supports in favour of a later entry. **If a client supports none of the declared `type` values**, it MUST NOT dispatch via this card; it SHOULD surface a clear error indicating the mismatch, and MAY fall back to any client-specific mechanism (not defined by this SEP).
 
 For a `page-global` entry, the consumer reads `global`, finds the handler maps at `window[global]`, matches identifiers to handlers, and dispatches — the identifier the handler takes is the identifier each MCP operation already carries. The global is **declared, never defaulted** — a short default name would be a collision risk on a shared page, so each page chooses its own global name, mirroring how Server Card declares its endpoints explicitly rather than relying on a convention.
